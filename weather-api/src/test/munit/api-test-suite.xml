@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:munit="http://www.mulesoft.org/schema/mule/munit" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:core="http://www.mulesoft.org/schema/mule/core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd">
+    <munit:config name="munit" doc:name="MUnit configuration" mock-connectors="false" mock-inbounds="false"/>
+    <spring:beans>
+        <spring:import resource="classpath:api.xml"/>
+    </spring:beans>
+    <http:request-config name="Weather_API_Test" host="localhost" port="8081" basePath="/weather"  doc:name="HTTP Request Configuration">
+        <http:raml-api-configuration location="api.raml"/>
+    </http:request-config>
+    <munit:test name="getWeatherByCity.validInput" description="Test weather info found for valid city" >
+        <set-variable variableName="cityName" value="London" doc:name="set cityName"/>
+        <http:request config-ref="Weather_API_Test" path="/city/{cityName}" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:uri-param paramName="cityName" value="#[flowVars.cityName]"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-variable variableName="cityName"><![CDATA[%dw 1.0
+%output application/java
+---
+payload.name]]></dw:set-variable>
+        </dw:transform-message>
+         <munit:assert-true message="Valid status code received" condition="#[messageInboundProperty('http.status').is(eq(200))]" doc:name="Assert True"/>
+        <munit:assert-on-equals expectedValue="London" actualValue="#[flowVars.cityName]" doc:name="Assert Equals"/>
+    </munit:test>
+    <munit:test name="getWeatherByCity.validCityAndCountry" description="Test weather info found for valid city" >
+        <set-variable variableName="cityName" value="London,uk" doc:name="set cityName"/>
+        <http:request config-ref="Weather_API_Test" path="/city/{cityName}" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:uri-param paramName="cityName" value="#[flowVars.cityName]"/>
+            </http:request-builder>
+        </http:request>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-variable variableName="cityName"><![CDATA[%dw 1.0
+%output application/java
+---
+payload.name]]></dw:set-variable>
+        </dw:transform-message>
+         <munit:assert-true message="Valid status code received" condition="#[messageInboundProperty('http.status').is(eq(200))]" doc:name="Assert True"/>
+        <munit:assert-on-equals expectedValue="London" actualValue="#[flowVars.cityName]" doc:name="Assert Equals"/>
+    </munit:test>
+    <munit:test name="getWeatherByCity.invalidInput" description="Test weather info found for invalid city">
+        <set-variable variableName="cityName" value="ABCDEFG" doc:name="set cityName"/>
+        <http:request config-ref="Weather_API_Test" path="/city/{cityName}" method="GET" doc:name="HTTP">
+            <http:request-builder>
+                <http:uri-param paramName="cityName" value="#[flowVars.cityName]"/>
+            </http:request-builder>
+            <http:success-status-code-validator values="200,400"/>
+        </http:request>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-variable variableName="cityName"><![CDATA[%dw 1.0
+%output application/java
+---
+payload.name when payload.name? otherwise "city_not_found"]]></dw:set-variable>
+        </dw:transform-message>
+         <munit:assert-true message="Valid status code received" condition="#[messageInboundProperty('http.status').is(eq(400))]" doc:name="Assert True"/>
+        <munit:assert-on-equals expectedValue="city_not_found" actualValue="#[flowVars.cityName]" doc:name="Assert Equals"/>
+    </munit:test>
+</mule>

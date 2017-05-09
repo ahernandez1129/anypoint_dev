@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:metadata="http://www.mulesoft.org/schema/mule/metadata" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-current.xsd
+http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <http:listener-config name="api-httpListenerConfig" host="${weather.sys.host}" port="${weather.sys.port}" doc:name="HTTP Listener Configuration" basePath="${weather.sys.basePath}"/>
+    <apikit:config name="api-config" raml="api.raml" consoleEnabled="false" doc:name="Router"/>
+    <context:property-placeholder location="weather-sys-${mule.env}.properties"/>
+    <http:request-config name="Open_Weather_HTTP_Request" host="${openweather.host}" port="${openweather.port}" basePath="${openweather.basePath}" doc:name="HTTP Request Configuration" />
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="/*" doc:name="HTTP"/>
+        <apikit:router config-ref="api-config" doc:name="APIkit Router"/>
+        <exception-strategy ref="api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy"/>
+    </flow>
+    <flow name="api-console">
+        <http:listener config-ref="api-httpListenerConfig" path="/console/*" doc:name="HTTP"/>
+        <apikit:console config-ref="api-config" doc:name="APIkit Console"/>
+    </flow>
+    <flow name="get:/city/{cityName}:api-config">
+        <http:request config-ref="Open_Weather_HTTP_Request" path="/weather" method="GET" doc:name="Invoke Open Weather API" metadata:id="2e6f6c66-b4bb-4639-acca-47d6e9598355">
+            <http:request-builder>
+                <http:query-param paramName="q" value="#[flowVars.cityName]"/>
+                <http:query-param paramName="APPID" value="${openweather.key}"/>
+            </http:request-builder>
+            <http:success-status-code-validator values="200,400,404"/>
+        </http:request>
+        <choice doc:name="Choice">
+            <when expression="#[message.inboundProperties.'http.status' == 200]">
+                <dw:transform-message doc:name="Transform Message" metadata:id="a03d277f-2568-44d4-8d07-86e7261c3447">
+                    <dw:input-payload mimeType="application/json"/>
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	coord: {
+		lon: payload.coord.lon,
+		lat: payload.coord.lat
+	},
+	weather: payload.weather map ((weather , indexOfWeather) -> {
+		id: weather.id,
+		main: weather.main,
+		description: weather.description,
+		icon: weather.icon
+	}),
+	base: payload.base,
+	main: {
+		temp: payload.main.temp,
+		pressure: payload.main.pressure,
+		humidity: payload.main.humidity,
+		temp_min: payload.main.temp_min,
+		temp_max: payload.main.temp_max
+	},
+	visibility: payload.visibility,
+	wind: {
+		speed: payload.wind.speed,
+		deg: payload.wind.deg
+	},
+	clouds: {
+		all: payload.clouds.all
+	},
+	sys: {
+		type: payload.sys.type,
+		id: payload.sys.id,
+		message: payload.sys.message,
+		country: payload.sys.country,
+		sunrise: payload.sys.sunrise,
+		sunset: payload.sys.sunset
+	},
+	id: payload.id,
+	name: payload.name,
+	cod: payload.cod
+}]]></dw:set-payload>
+                </dw:transform-message>
+            </when>
+            <otherwise>
+                <dw:transform-message doc:name="Transform Message">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  cod: "400",
+  message: "Nothing to geocode"
+}]]></dw:set-payload>
+                </dw:transform-message>
+                <set-property propertyName="#['http.status']" value="400" doc:name="Property"/>
+            </otherwise>
+        </choice>
+
+    
+    </flow>
+    <apikit:mapping-exception-strategy name="api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property"/>
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload"/>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>

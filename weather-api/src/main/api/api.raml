@@ -1,0 +1,20 @@
+#%RAML 0.8
+title: weather
+version: v1
+baseUri: http://localhost/weather/{version}
+/city/{cityName}:
+  uriParameters: 
+    cityName: 
+      type: string
+      required: true
+      description: the city name.
+  get:
+    responses: 
+      200:
+        body: 
+          application/json:
+            example: !include examples/getWeatherByCityNameResponse.json
+      400:
+        body: 
+          application/json:
+            example: !include examples/getWeatherByCityError400.json
